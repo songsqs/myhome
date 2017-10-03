@@ -34,7 +34,7 @@ public class Crawer {
 			Elements content = document.select("ul.sellListContent");// 获取房屋list
 			Elements urlList = content.select("a.img");
 			for (int i = 0; i < urlList.size(); i++) {
-
+				LOG.info(urlList.get(i).attr("href"));
 			}
 
 		} catch (Exception e) {
