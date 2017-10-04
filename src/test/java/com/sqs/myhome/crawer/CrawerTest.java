@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 import com.alibaba.fastjson.JSON;
@@ -32,32 +33,57 @@ public class CrawerTest {
 
 	@Test
 	public void getPrice() {
-		String source = "<html><body><div class=\"price\"><span class=\"total\">620</span><div class=\"text\"><div class=\"unitPrice\"><span class=\"unitPriceValue\">77792<i>元/平米</i></span></div><div class=\"tax\" id=\"tax-text\">首付及贷款情况请咨询经纪人</div></div></div></body></html>";
-		// LOG.info("source:" + source);
-		Document document = Jsoup.parse(source);
-		LOG.info("document:" + document.toString());
-		Elements price = document.select("div.price");
-		LOG.info("price:" + price.toString());
-		Elements totalPrice = price.select("span.total");
-		LOG.info("totalPrice:" + totalPrice.toString());
-		String totalPriceText = totalPrice.text();
+		String url = "https://bj.lianjia.com/ershoufang/101102102226.html";
 
-		LOG.info("totalPrice:" + totalPriceText);
+		try {
+			Document document = Jsoup.connect(url).get();
+			Elements overview = document.select("div.overview");
+			LOG.info("overview:" + overview);
 
-		Elements unitPrice = price.select("div.unitPrice").select("span.unitPriceValue");
-		String unitPriceValue = unitPrice.html();
+			Elements price = overview.select("div.content").select("div.price");
+			LOG.info("price:" + price);
+			Elements totalPrice = price.select("span.total");
+			LOG.info("totalPrice:" + totalPrice);
+			String totalPriceText = totalPrice.text();
 
-		LOG.info("unitPriceValue:" + unitPriceValue);
+			LOG.info("totalPriceText:" + totalPriceText);
+		} catch (Exception e) {
+		}
 
-		LOG.info("unitPriceValue2:" + unitPriceValue.substring(0, unitPriceValue.indexOf("<")));
+	}
 
+	@Test
+	public void getCourtId() {
+		String url = "https://bj.lianjia.com/ershoufang/101102077819.html";
+		try {
+			Document document = Jsoup.connect(url).get();
+			Elements overview = document.select("div.overview");
+
+			Elements courtElement = overview.select("div.content").select("div.aroundInfo").select("div.communityName")
+					.select("a.info");
+
+			LOG.info("courtElement:" + courtElement);
+
+			String courtInfo = courtElement.attr("href");
+			if (courtInfo.endsWith("/")) {
+				courtInfo = courtInfo.substring(0, courtInfo.length() - 1);
+			}
+			if (courtInfo.startsWith("/xiaoqu/")) {
+				courtInfo = courtInfo.substring(courtInfo.indexOf("/xiaoqu/") + 8);
+			}
+
+			LOG.info("courtInfo:" + courtInfo);
+		} catch (Exception e) {
+			LOG.error("error when getCourtId", e);
+		}
 	}
 
 	@Test
 	public void getCourtInfo() {
 		String url = "https://bj.lianjia.com/ershoufang/housestat?hid=101101858879&rid=1111027379321";
 
-		ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
+		ResponseEntity<String> response = restTemplate.postForEntity(url, null, String.class);
+
 		String content = response.getBody();
 		JSONObject json = JSON.parseObject(content);
 
@@ -87,11 +113,34 @@ public class CrawerTest {
 
 		for (int i = 0; i < liElement.size(); i++) {
 			Element temp = liElement.get(i);
-
-			LOG.info("temp" + i + ":" + temp.toString());
-
+			Elements span = temp.select("span.label");
+			String label = span.text();
 			String tempString = temp.html();
-			LOG.info("info" + i + ":" + tempString.substring(tempString.indexOf("span>") + 5, tempString.length()));
+			if ("房屋户型".equals(label)) {
+				tempString = tempString.substring(tempString.indexOf("span>") + 5, tempString.length());
+				LOG.info("房屋户型:" + tempString);
+			} else if ("建筑面积".equals(label)) {
+				tempString = tempString.substring(tempString.indexOf("span>") + 5, tempString.length());
+				LOG.info("建筑面积:" + getNumber(tempString));
+			}
 		}
+	}
+
+	private String getNumber(String src) {
+		if (StringUtils.isEmpty(src)) {
+			return null;
+		}
+
+		StringBuilder sb = new StringBuilder();
+
+		for (int i = 0; i < src.length(); i++) {
+			char c = src.charAt(i);
+			if (Character.isDigit(c) || '.' == c) {
+				sb.append(c);
+			} else if (i > 0) {
+				break;
+			}
+		}
+		return sb.toString();
 	}
 }

@@ -26,7 +26,7 @@ public class House {
 	private String houseType;
 	// 交易权属
 	private String transferType;
-	// 首付(单位元)
+	// 首付(单位万元)
 	private BigDecimal downPayment;
 	// 月供(单位元)
 	private BigDecimal monthlyPayment;
@@ -35,7 +35,7 @@ public class House {
 	// 供暖方式
 	private String heatingType;
 	// 房屋年限(如:满五年)
-	private String limit;
+	private String limitYear;
 	// 建筑时间
 	private Date buildTime;
 	// 上次交易时间
@@ -171,12 +171,12 @@ public class House {
 		this.heatingType = heatingType;
 	}
 
-	public String getLimit() {
-		return limit;
+	public String getLimitYear() {
+		return limitYear;
 	}
 
-	public void setLimit(String limit) {
-		this.limit = limit;
+	public void setLimitYear(String limitYear) {
+		this.limitYear = limitYear;
 	}
 
 	public Date getBuildTime() {

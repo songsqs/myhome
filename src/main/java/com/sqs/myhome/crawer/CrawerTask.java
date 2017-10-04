@@ -1,6 +1,8 @@
 package com.sqs.myhome.crawer;
 
 import java.math.BigDecimal;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -14,11 +16,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import com.sqs.myhome.dao.HouseDao;
 import com.sqs.myhome.vo.House;
 
 /**
@@ -28,10 +32,9 @@ import com.sqs.myhome.vo.House;
  *         得到小区信息，如经纬度等<br>
  *         https://bj.lianjia.com/tools/calccost?house_code=101101844835 房贷计算
  */
+@Service
 public class CrawerTask {
 	private static final Logger LOG = LoggerFactory.getLogger(CrawerTask.class);
-
-	private static final CrawerTask INSTANCE = new CrawerTask();
 
 	private static final ExecutorService EXEC = new ThreadPoolExecutor(10, 20, 30, TimeUnit.SECONDS,
 			new LinkedBlockingQueue<Runnable>(1024));
@@ -48,13 +51,9 @@ public class CrawerTask {
 	@Autowired
 	private RestTemplate restTemplate;
 
-	private CrawerTask() {
+	@Autowired
+	private HouseDao houseDao;
 
-	}
-
-	public static CrawerTask instance() {
-		return INSTANCE;
-	}
 
 	/**
 	 * 添加房子详细信息url task
@@ -100,7 +99,7 @@ public class CrawerTask {
 		// 获取价格信息
 		Elements overview = document.select("div.overview");
 
-		Elements price = overview.select("div.prive");
+		Elements price = overview.select("div.content").select("div.price");
 		Elements totalPrice = price.select("span.total");
 		String totalPriceText = totalPrice.text();
 		house.setPrice(new BigDecimal(totalPriceText));
@@ -116,6 +115,8 @@ public class CrawerTask {
 				.select("#introduction > div").select("div.introContent");
 
 		parseBaseInfo(introContentElement, house);
+		parseTranInfo(introContentElement, house);
+		parseLoanInfo(house);
 
 	}
 
@@ -127,7 +128,7 @@ public class CrawerTask {
 	 * @param house
 	 */
 	private void parseCourt(Elements elements, House house) {
-		Elements courtElement = elements.select("div.content").select("div.aroundInfo").select("communityName")
+		Elements courtElement = elements.select("div.content").select("div.aroundInfo").select("div.communityName")
 				.select("a.info");
 
 		// <a href="/xiaoqu/1111027379321/" target="_blank" class="info ">世纪村东区</a>
@@ -138,13 +139,15 @@ public class CrawerTask {
 			courtInfo = courtInfo.substring(0, courtInfo.length() - 1);
 		}
 		if (courtInfo.startsWith("/xiaoqu/")) {
-			courtInfo = courtInfo.substring(courtInfo.indexOf("/xiaoqu"));
+			courtInfo = courtInfo.substring(courtInfo.indexOf("/xiaoqu/") + 8);
 		}
 
 		// courtInfo已经解析为小区id,通过rest接口获取小区信息
 		String url = String.format(GET_HOUSE_XIAOQU_INFO_URL, house.getHouseCode(), courtInfo);
 
-		ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
+		LOG.info("get court info from " + url);
+
+		ResponseEntity<String> response = restTemplate.postForEntity(url, null, String.class);
 		String content = response.getBody();
 		JSONObject json = JSON.parseObject(content);
 
@@ -171,6 +174,120 @@ public class CrawerTask {
 			Element temp = liElement.get(i);
 			Elements span = temp.select("span.label");
 			String label = span.text();
+			String tempString = temp.html();
+			tempString = tempString.substring(tempString.indexOf("span>") + 5, tempString.length());
+			if ("房屋户型".equals(label)) {
+				house.setHouseType(tempString);
+			} else if ("建筑面积".equals(label)) {
+				house.setBuildUpArea(new BigDecimal(getNumber(tempString)));
+			} else if ("房屋朝向".equals(label)) {
+				house.setOrientation(tempString);
+			} else if ("产权年限".equals(label)) {
+				house.setPropertyRight(tempString);
+			}
+		}
+	}
+
+	/**
+	 * 解析房屋交易属性
+	 * 
+	 * @param elements
+	 *            div.transaction
+	 * @param house
+	 */
+	private void parseTranInfo(Elements elements, House house) {
+		Elements liElement = elements.select("div.transaction").select("div.content > ul").select("li");
+
+		for (int i = 0; i < liElement.size(); i++) {
+			Element temp = liElement.get(i);
+			Elements span = temp.select("span.label");
+			String label = span.text();
+			String tempString = temp.html();
+			tempString = tempString.substring(tempString.indexOf("span>") + 5, tempString.length());
+			if ("挂牌时间".equals(label)) {
+				house.setListingTime(getDate(tempString));
+			} else if ("交易权属".equals(label)) {
+				house.setTransferType(tempString);
+			} else if ("上次交易".equals(label)) {
+				house.setLastTransactionTime(getDate(tempString));
+			} else if ("房屋用途".equals(label)) {
+				house.setPurpose(tempString);
+			} else if ("房屋年限".equals(label)) {
+				house.setLimitYear(tempString);
+			}
+		}
+	}
+
+	private String getNumber(String src) {
+		if (StringUtils.isEmpty(src)) {
+			return null;
+		}
+
+		StringBuilder sb = new StringBuilder();
+
+		for (int i = 0; i < src.length(); i++) {
+			char c = src.charAt(i);
+			if (Character.isDigit(c) || '.' == c) {
+				sb.append(c);
+			} else if (i > 0) {
+				break;
+			}
+		}
+		return sb.toString();
+	}
+
+	private Date getDate(String src) {
+		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+		try {
+			return sdf.parse(src);
+		} catch (Exception e) {
+			LOG.error("error when getDate", e);
+			return new Date();
+		}
+	}
+
+	/**
+	 * 解析贷款信息
+	 * 
+	 * @param house
+	 */
+	private void parseLoanInfo(House house) {
+		String url = String.format(GET_HOUSE_CAL_INFO_URL, house.getHouseCode());
+
+		try {
+			ResponseEntity<String> response = restTemplate.postForEntity(url, null, String.class);
+			String content = response.getBody();
+
+			JSONObject json = JSON.parseObject(content);
+			if (json.containsKey("errorCode") == false) {
+				return;
+			}
+
+			Integer errorCode = json.getInteger("errorCode");
+			if (Integer.valueOf(0).equals(errorCode) == false) {
+				return;
+			}
+
+			JSONObject dataJson = json.getJSONObject("data");
+			JSONObject paymentJson = dataJson.getJSONObject("payment");
+			BigDecimal downPayment = paymentJson.getBigDecimal("cost_house");
+			house.setDownPayment(downPayment);
+
+			BigDecimal monthlyPayment = paymentJson.getJSONObject("loan_info").getJSONObject("elp").getBigDecimal("mp");
+			house.setMonthlyPayment(monthlyPayment);
+		} catch (Exception e) {
+			LOG.error("error when parseLoanInfo", e);
+		}
+	}
+
+	private void inertOrUpdateHouseInfo(House house) {
+		House dbHouse = houseDao.selectHouseByHouseCode(house.getHouseCode());
+		if (dbHouse == null) {
+			// insert
+			houseDao.addHouse(house);
+		} else {
+			// update
+			houseDao.updateHouseByHouseCode(house);
 		}
 	}
 
@@ -186,18 +303,31 @@ public class CrawerTask {
 		public void run() {
 			CrawerTask.LOG.info("begin to get house info from " + detailUrl);
 			// 获取网页内容
+
+			Document document = null;
+
 			try {
-				Document document = Jsoup.connect(detailUrl).get();
+				document = Jsoup.connect(detailUrl).get();
 
 				// 职责链模式解析网页内容
 				final House house = new House();
 
 				house.setHouseCode(getHouseIdFromUrl(detailUrl));
+				house.setViewUrl(detailUrl);
+
+				Date now = new Date();
+				house.setCreateTime(now);
+				house.setUpdateTime(now);
 
 				parseHouseInfo(document, house);
 
+				inertOrUpdateHouseInfo(house);
+
 			} catch (Exception e) {
-				CrawerTask.LOG.info("ParseHouseInfoTask,run error,thread:" + Thread.currentThread().getName(), e);
+				CrawerTask.LOG.info(
+						"ParseHouseInfoTask,run error,thread:" + Thread.currentThread().getName() + ",url:" + detailUrl
+								+ ",content:" + document,
+						e);
 			}
 		}
 

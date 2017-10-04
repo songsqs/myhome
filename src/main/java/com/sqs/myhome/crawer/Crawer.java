@@ -4,13 +4,20 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.Date;
+import java.util.List;
 
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+
+import com.sqs.myhome.dao.SeedDao;
+import com.sqs.myhome.vo.Seed;
 
 /**
  * 链家网页爬虫
@@ -28,6 +35,13 @@ public class Crawer {
 	 * 
 	 * @param url
 	 */
+
+	@Autowired
+	private CrawerTask crawerTask;
+
+	@Autowired
+	private SeedDao seedDao;
+
 	public void crawerFormSeed(String url) {
 		try {
 			Document document = Jsoup.connect(url).get();
@@ -35,6 +49,7 @@ public class Crawer {
 			Elements urlList = content.select("a.img");
 			for (int i = 0; i < urlList.size(); i++) {
 				LOG.info(urlList.get(i).attr("href"));
+				crawerTask.addTask(urlList.get(i).attr("href"));
 			}
 
 		} catch (Exception e) {
@@ -42,24 +57,18 @@ public class Crawer {
 		}
 	}
 
+	@Scheduled(cron = "0 0 0 * * ?")
+	public void doTask() {
+		LOG.info("doTask at " + new Date());
+
+		List<Seed> seedList = seedDao.getSeedList();
+		LOG.info("get from seed dao ,seedList:" + seedList);
+		for (Seed seedT : seedList) {
+			crawerFormSeed(seedT.getViewUrl());
+		}
+	}
+
 	public static void main(String[] args) throws IOException {
-		// String url = "https://bj.lianjia.com/ershoufang/sf1/";
-		// Document document = Jsoup.connect(url).get();
-		// // System.out.println(document);
-		//
-		// String url2 = "https://bj.lianjia.com/ershoufang/101101917569.html";
-		// document = Jsoup.connect(url2).get();
-		//
-		// String path = "/Users/songqingshan/works/detail.html";
-		//
-		// File file = new File(path);
-		//
-		// BufferedOutputStream bs = new BufferedOutputStream(new
-		// FileOutputStream(file));
-		//
-		// bs.write(document.toString().getBytes("UTF-8"));
-		//
-		// bs.close();
 
 		File file = new File("/Users/songqingshan/works/home.html");
 
