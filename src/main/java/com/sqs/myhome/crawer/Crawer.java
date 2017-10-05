@@ -6,6 +6,7 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.util.Date;
 import java.util.List;
+import java.util.Random;
 
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -15,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import com.sqs.myhome.dao.SeedDao;
 import com.sqs.myhome.vo.Seed;
@@ -57,15 +59,25 @@ public class Crawer {
 		}
 	}
 
-	@Scheduled(cron = "0 0 0 * * ?")
+	@Scheduled(cron = "0 0 0/2 * * ?")
 	public void doTask() {
 		LOG.info("doTask at " + new Date());
 
 		List<Seed> seedList = seedDao.getSeedList();
 		LOG.info("get from seed dao ,seedList:" + seedList);
-		for (Seed seedT : seedList) {
-			crawerFormSeed(seedT.getViewUrl());
+
+		// 随机选取一个,每小时抓取一个url,防止流量监控
+
+		if (CollectionUtils.isEmpty(seedList)) {
+			return;
 		}
+
+		Random random = new Random();
+		int index = random.nextInt(seedList.size());
+
+		Seed seed = seedList.get(index);
+
+		crawerFormSeed(seed.getViewUrl());
 	}
 
 	public static void main(String[] args) throws IOException {
