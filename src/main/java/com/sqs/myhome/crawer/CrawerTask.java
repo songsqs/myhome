@@ -270,7 +270,11 @@ public class CrawerTask {
 
 			JSONObject dataJson = json.getJSONObject("data");
 			JSONObject paymentJson = dataJson.getJSONObject("payment");
-			BigDecimal downPayment = paymentJson.getBigDecimal("cost_house");
+			BigDecimal costHouse = paymentJson.getBigDecimal("cost_house");
+			BigDecimal costTax = paymentJson.getBigDecimal("cost_tax");
+			BigDecimal costJingjiren = paymentJson.getBigDecimal("cost_jingjiren");
+
+			BigDecimal downPayment = costHouse.add(costTax).add(costJingjiren);
 			house.setDownPayment(downPayment);
 
 			BigDecimal monthlyPayment = paymentJson.getJSONObject("loan_info").getJSONObject("elp").getBigDecimal("mp");
